@@ -1,0 +1,17 @@
+{
+  "name": "Brightwork",
+  "short_name": "Brightwork",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f4efe7",
+  "theme_color": "#c3543b",
+  "description": "A calm study task tracker with focus sprints.",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

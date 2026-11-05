@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Brightwork</title>
+  <meta name="theme-color" content="#c3543b">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css?v=4">
+  <script src="script.js?v=2" defer></script>
+</head>
+<body>
+  <main class="app">
+    <header class="app-header">
+      <div class="header-row">
+        <p class="eyebrow"><span class="spark">✦</span> Brightwork</p>
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false">
+          Dark mode
+        </button>
+      </div>
+      <h1>Turn small steps into <span class="gradient-text">big wins.</span></h1>
+      <p class="intro">Plan your next move, enter a focus sprint, and build unstoppable momentum.</p>
+    </header>
+
+    <section class="dashboard" aria-label="Study progress">
+      <div class="momentum-card">
+        <div class="card-kicker">Your momentum</div>
+        <div class="momentum-content">
+          <div id="progress-ring" class="progress-ring" style="--progress: 0%">
+            <div class="progress-ring-inner">
+              <strong id="progress-percent">0%</strong>
+              <span>complete</span>
+            </div>
+          </div>
+          <div>
+            <h2 id="momentum-title">Ready when you are</h2>
+            <p id="momentum-message">Every finished task makes the next one easier.</p>
+          </div>
+        </div>
+      </div>
+      <div class="stats-card">
+        <div class="stat"><strong id="completed-count">0</strong><span>finished</span></div>
+        <div class="stat"><strong id="sprint-count">0</strong><span>sprints</span></div>
+        <div class="stat"><strong id="streak-count">0</strong><span>day streak</span></div>
+      </div>
+    </section>
+
+    <section class="task-card" aria-labelledby="add-task-heading">
+      <h2 id="add-task-heading">Add a task</h2>
+      <form id="task-form" class="task-form">
+        <div class="task-fields">
+          <div class="field-wide">
+            <label for="task-input">Task name</label>
+            <input id="task-input" name="task" type="text" placeholder="e.g. Review chapter 3" maxlength="120" required>
+          </div>
+          <div>
+            <label for="task-due-date">Due date</label>
+            <input id="task-due-date" name="dueDate" type="date">
+          </div>
+          <div>
+            <label for="task-priority">Priority</label>
+            <select id="task-priority" name="priority">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+          <div>
+            <label for="task-category">Category</label>
+            <input id="task-category" name="category" type="text" placeholder="e.g. Biology" maxlength="30">
+          </div>
+        </div>
+        <div class="form-row">
+          <button type="submit">Add task</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="task-card" aria-labelledby="tasks-heading">
+      <div class="tasks-heading">
+        <h2 id="tasks-heading">Your tasks</h2>
+        <span id="task-count" class="task-count">0 tasks</span>
+      </div>
+      <div class="task-tools">
+        <div class="filter-group" role="group" aria-label="Task filters">
+          <button class="filter-button active" data-filter="all" type="button">All</button>
+          <button class="filter-button" data-filter="active" type="button">Active</button>
+          <button class="filter-button" data-filter="completed" type="button">Completed</button>
+          <button class="filter-button" data-filter="high" type="button">High priority</button>
+        </div>
+        <div class="data-actions">
+          <button id="export-button" class="small-button" type="button">Export</button>
+          <label class="small-button file-button">Import<input id="import-input" type="file" accept=".json,.csv,.txt,application/json,text/csv,text/plain"></label>
+        </div>
+      </div>
+      <p id="empty-message" class="empty-message">No tasks yet. Add your first study task above.</p>
+      <ul id="task-list" class="task-list" aria-live="polite"></ul>
+    </section>
+
+    <dialog id="import-dialog" class="import-dialog">
+      <form method="dialog" class="import-panel">
+        <div class="tasks-heading">
+          <div>
+            <p class="card-kicker">Bring it with you</p>
+            <h2>Review import</h2>
+          </div>
+          <button id="close-import" class="small-button" value="cancel" type="submit">Close</button>
+        </div>
+        <p id="import-summary" class="history-intro"></p>
+        <ul id="import-preview" class="import-preview"></ul>
+        <div class="import-options">
+          <label><input type="radio" name="import-mode" value="add" checked> Add to my tasks</label>
+          <label><input type="radio" name="import-mode" value="replace"> Replace my tasks</label>
+        </div>
+        <div class="import-actions">
+          <button id="confirm-import" value="default" type="button">Import tasks</button>
+          <button class="secondary-task-button" value="cancel" type="submit">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+
+    <section class="history-card" aria-labelledby="history-heading">
+      <div class="tasks-heading">
+        <div>
+          <p class="card-kicker">Your rhythm</p>
+          <h2 id="history-heading">Study history</h2>
+        </div>
+      </div>
+      <p class="history-intro">The last 28 days of completed study work, including tasks finished manually.</p>
+      <p id="storage-status" class="storage-status" role="status" hidden></p>
+      <div id="history-grid" class="history-grid" aria-label="Study activity calendar"></div>
+    </section>
+
+    <section class="focus-card" aria-labelledby="focus-heading">
+      <div class="focus-copy">
+        <p class="card-kicker">Deep work mode</p>
+        <h2 id="focus-heading">One task. Zero distractions.</h2>
+        <p id="focus-status">Pick a task and choose your own focus window.</p>
+        <div class="focus-selects">
+          <div>
+            <label for="focus-task">Focus task</label>
+            <select id="focus-task"></select>
+          </div>
+          <div>
+            <label for="focus-duration">Focus length</label>
+            <select id="focus-duration">
+              <option value="5">5 minutes</option>
+              <option value="15">15 minutes</option>
+              <option value="25" selected>25 minutes</option>
+              <option value="45">45 minutes</option>
+              <option value="60">60 minutes</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="timer-area">
+        <div id="timer-ring" class="timer-ring" style="--timer-progress: 0deg">
+          <div class="timer-ring-inner">
+            <strong id="timer-display">25:00</strong>
+            <span>focus window</span>
+          </div>
+        </div>
+        <div class="timer-controls">
+          <button id="timer-button" type="button">Start sprint</button>
+          <button id="reset-timer" class="secondary-button" type="button">Reset</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
