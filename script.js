@@ -180,6 +180,7 @@ function reloadWorkspace() {
 function applyCloudSnapshot(raw) {
   const snapshot = BrightworkSync.normalizeSnapshot(raw);
   if (JSON.stringify(snapshot) === JSON.stringify(workspaceSnapshot())) return;
+  if (taskList.querySelector(".edit-form")) return false;
   tasks = snapshot.tasks; studyStats = snapshot.stats;
   dailyGoalMinutes = snapshot.preferences.dailyGoal;
   if (!focusSession) focusDurationSeconds = snapshot.preferences.focusDuration * 60;

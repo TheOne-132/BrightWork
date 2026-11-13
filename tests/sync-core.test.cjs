@@ -7,6 +7,15 @@ test("a missing cloud workspace is normalized without losing local work", () => 
   assert.deepEqual(normal(null), normal({}));
   assert.equal(merge(null, { tasks: [task("local")] }, null).snapshot.tasks[0].id, "local");
 });
+test("cloud migration preserves long task descriptions from existing imports", () => {
+  const text = "Study details ".repeat(30);
+  const category = "Imported subject ".repeat(10);
+  const snapshot = normal({ tasks: [{ ...task("imported", text), category }] });
+  assert.equal(snapshot.tasks[0].text, text.trim());
+  assert.equal(snapshot.tasks[0].category, category);
+  const recovered = merge({ tasks: [task("imported")] }, { tasks: [task("imported", "Local edit")] }, snapshot);
+  assert.ok(recovered.snapshot.tasks.some((task) => task.text === text.trim() + " (recovered copy)"));
+});
 
 test("independent offline additions on two devices both survive", () => {
   const result = merge({}, { tasks: [task("a")] }, { tasks: [task("b")] });
@@ -96,4 +105,31 @@ test("edits made during an upload remain pending rather than being overwritten",
   finish(); await syncing; engine.stop();
   assert.equal(saved.local.tasks[0].text, "Edited while saving");
   assert.equal(saved.base.tasks[0].text, "a");
+});
+
+test("incoming updates wait for an open editor and preserve its conflict baseline", async () => {
+  const base = normal({ tasks: [task("a", "Original")] });
+  let remote = { revision: 2, payload: normal({ tasks: [task("a", "Other device edit")] }) };
+  let editing = true;
+  let applied;
+  const engine = new SyncEngine({ local: base, cache: { base }, persist() {}, status() {},
+    apply(snapshot) { if (editing) return false; applied = snapshot; },
+    transport: { read: async () => remote, write: async (payload) => { remote = { revision: 3, payload }; return remote; } }
+  });
+  await engine.sync();
+  assert.equal(engine.base.tasks[0].text, "Original");
+  editing = false;
+  engine.queue({ tasks: [task("a", "My draft edit")] });
+  await engine.sync(); engine.stop();
+  assert.equal(applied.tasks.length, 2);
+  assert.ok(applied.tasks.some((task) => task.text === "My draft edit"));
+  assert.ok(applied.tasks.some((task) => task.text.includes("Other device edit")));
+});
+
+test("pending work in a saved queue survives even before it reaches the visible workspace", () => {
+  const base = normal({ tasks: [task("existing")] });
+  const pending = normal({ tasks: [task("existing"), task("queued-import")] });
+  const engine = new SyncEngine({ local: base, cache: { base, local: pending }, persist() {}, apply() {}, status() {}, transport: {} });
+  assert.equal(engine.local.tasks.length, 2);
+  engine.stop();
 });

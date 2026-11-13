@@ -12,9 +12,9 @@
       seen.add(task.id);
       return true;
     }).map((task) => ({
-      id: task.id, text: String(task.text).trim().slice(0, 120), completed: Boolean(task.completed),
+      id: task.id, text: String(task.text).trim(), completed: Boolean(task.completed),
       dueDate: String(task.dueDate || ""), priority: ["low", "medium", "high"].includes(task.priority) ? task.priority : "medium",
-      category: String(task.category || "").slice(0, 30), completedAt: String(task.completedAt || "")
+      category: String(task.category || ""), completedAt: String(task.completedAt || "")
     }));
     const preferences = raw.preferences || {};
     return {
@@ -54,7 +54,7 @@
           else if (!equal(there[key], before?.[key]) && !equal(here[key], there[key])) conflicting = true;
         }
         if (conflicting) {
-          const recovered = { ...there, id: conflictId(there), text: `${there.text.slice(0, 103)} (recovered copy)` };
+          const recovered = { ...there, id: conflictId(there), text: `${there.text} (recovered copy)` };
           tasks.set(recovered.id, recovered);
           conflicts += 1;
         }
@@ -77,8 +77,8 @@
   class SyncEngine {
     constructor({ transport, local, cache = {}, persist, apply, status }) {
       this.transport = transport;
-      this.local = normalizeSnapshot(local);
       this.base = normalizeSnapshot(cache.base);
+      this.local = cache.local ? mergeSnapshots(this.base, local, cache.local).snapshot : normalizeSnapshot(local);
       this.persist = persist;
       this.apply = apply;
       this.status = status;
@@ -131,11 +131,17 @@
           if (attempt === 3) throw new Error("Changes are arriving from another device. Try syncing again.");
         }
         if (this.stopped) return;
-        this.base = normalizeSnapshot(remote.payload);
+        const confirmed = normalizeSnapshot(remote.payload);
         const newerEdits = generation !== this.generation;
-        this.local = newerEdits ? mergeSnapshots(sentLocal, this.local, this.base).snapshot : this.base;
+        const nextLocal = newerEdits ? mergeSnapshots(sentLocal, this.local, confirmed).snapshot : confirmed;
+        // Keep the earlier baseline while an editor is open. Its eventual save
+        // must still be compared with the remote changes that arrived meanwhile.
+        if (this.apply(copy(nextLocal)) === false) {
+          this.saveCache(); this.status("editing"); return;
+        }
+        this.base = confirmed;
+        this.local = nextLocal;
         this.saveCache();
-        this.apply(copy(this.local));
         this.status(newerEdits ? "pending" : conflicts ? "recovered" : "saved");
         if (newerEdits) this.timer = setTimeout(() => this.sync(), 0);
       } catch (error) {

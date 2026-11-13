@@ -58,6 +58,7 @@
     const descriptions = {
       syncing: "Saving your activity…",
       pending: "Changes saved on this device. Waiting to sync.",
+      editing: "Cloud updates will appear after you save or cancel your edit.",
       saved: "Saved to your account.",
       recovered: "Saved. Conflicting edits were kept as recovered tasks so you can review them.",
       offline: navigator.onLine ? "Cloud saving is unavailable. Your changes stay on this device; try syncing again." : "You're offline. Your changes will sync when you reconnect.",
@@ -156,6 +157,7 @@
   });
   byId("transfer-guest").addEventListener("click", () => {
     if (!user || !engine) return;
+    if (document.querySelector("#task-list .edit-form")) { showSyncStatus("editing"); return; }
     try {
       const merged = BrightworkSync.mergeSnapshots({}, workspace.snapshot(), workspace.guestSnapshot()).snapshot;
       workspace.apply(merged); engine.queue(merged);
