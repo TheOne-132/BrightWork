@@ -1,0 +1,10 @@
+const fs = require("node:fs");
+const path = require("node:path");
+const root = path.resolve(__dirname, "..");
+const packageRoot = path.join(root, "node_modules/@supabase/supabase-js");
+const output = path.join(root, "vendor");
+const metadata = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8"));
+fs.mkdirSync(output, { recursive: true });
+fs.copyFileSync(path.join(packageRoot, "dist/umd/supabase.js"), path.join(output, "supabase.js"));
+fs.copyFileSync(path.join(packageRoot, "LICENSE"), path.join(output, "supabase-LICENSE.txt"));
+fs.writeFileSync(path.join(output, "README.md"), `# Supabase browser client\n\nSupabase JavaScript ${metadata.version}, copied without modification from the official npm package.\n\nSource: https://github.com/supabase/supabase-js\n\nLicense: [MIT](./supabase-LICENSE.txt).\n\nRun \`npm ci\` and \`npm run vendor\` after changing the pinned package version. Keeping this file local allows the app shell and cached accounts to open offline without a CDN.\n`);
