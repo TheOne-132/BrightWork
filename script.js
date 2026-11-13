@@ -1,6 +1,9 @@
 const STORAGE_KEY = "studyTasks";
 const STATS_KEY = "studyStats";
 const DURATION_KEY = "focusDuration";
+const SESSION_KEY = "focusSession";
+const GOAL_KEY = "dailyFocusGoal";
+const Core = BrightworkCore;
 
 const taskForm = document.querySelector("#task-form");
 const taskInput = document.querySelector("#task-input");
@@ -34,20 +37,59 @@ const importSummary = document.querySelector("#import-summary");
 const importPreview = document.querySelector("#import-preview");
 const confirmImport = document.querySelector("#confirm-import");
 const storageStatus = document.querySelector("#storage-status");
+const dailyGoal = document.querySelector("#daily-goal");
+const sprintResult = document.querySelector("#sprint-result");
+const sprintSummary = document.querySelector("#sprint-summary");
+const completeFocusTask = document.querySelector("#complete-focus-task");
+const continueFocus = document.querySelector("#continue-focus");
+const chooseNextTask = document.querySelector("#choose-next-task");
+const focusEmptyLink = document.querySelector("#focus-empty-link");
 
 let tasks = loadTasks();
 let activeFilter = "all";
-let focusDurationSeconds = Number(localStorage.getItem(DURATION_KEY)) * 60 || 25 * 60;
-let focusSeconds = focusDurationSeconds;
+let focusDurationSeconds = validFocusMinutes(readStorage(DURATION_KEY)) * 60;
+let dailyGoalMinutes = validGoalMinutes(readStorage(GOAL_KEY));
 let timerInterval = null;
 let selectedTaskId = "";
 let studyStats = loadStats();
+let focusSession = loadSession();
 let pendingImport = null;
+let displayedDay = Core.localDay();
+
+function readStorage(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    showStorageError();
+    return null;
+  }
+}
+
+function showStorageError() {
+  storageStatus.textContent = "Your browser could not save changes. Export a backup before leaving.";
+  storageStatus.hidden = false;
+}
+
+function validFocusMinutes(value) {
+  return Core.FOCUS_MINUTES.includes(Number(value)) ? Number(value) : 25;
+}
+
+function validGoalMinutes(value) {
+  return Core.GOAL_MINUTES.includes(Number(value)) ? Number(value) : 50;
+}
+
+function loadSession() {
+  try {
+    return Core.normalizeSession(JSON.parse(readStorage(SESSION_KEY)));
+  } catch {
+    return null;
+  }
+}
 
 function loadTasks() {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    return Array.isArray(saved) ? saved.map(normalizeTask) : [];
+    const saved = JSON.parse(readStorage(STORAGE_KEY));
+    return Array.isArray(saved) ? saved.filter((task) => task && typeof task === "object").map(normalizeTask).filter((task) => task.text) : [];
   } catch {
     return [];
   }
@@ -55,12 +97,12 @@ function loadTasks() {
 
 function normalizeTask(task) {
   return {
-    id: task.id || `${Date.now()}-${Math.random()}`,
+    id: String(task.id || `${Date.now()}-${Math.random()}`),
     text: String(task.text || "").trim(),
     completed: Boolean(task.completed),
     dueDate: isValidDateString(task.dueDate) ? task.dueDate : "",
     priority: ["low", "medium", "high"].includes(task.priority) ? task.priority : "medium",
-    category: task.category || "",
+    category: String(task.category || ""),
     completedAt: task.completedAt || ""
   };
 }
@@ -71,9 +113,9 @@ function saveTasks() {
 
 function loadStats() {
   try {
-    return JSON.parse(localStorage.getItem(STATS_KEY)) || { sprints: 0, streak: 0, lastStudyDate: "", studyDays: [] };
+    return Core.normalizeStats(JSON.parse(readStorage(STATS_KEY)));
   } catch {
-    return { sprints: 0, streak: 0, lastStudyDate: "", studyDays: [] };
+    return Core.normalizeStats(null);
   }
 }
 
@@ -84,20 +126,16 @@ function saveStats() {
 function saveStorage(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-    storageStatus.hidden = true;
   } catch {
-    storageStatus.textContent = "Your browser could not save changes. Export a backup before leaving.";
-    storageStatus.hidden = false;
+    showStorageError();
   }
 }
 
 function saveRawStorage(key, value) {
   try {
     localStorage.setItem(key, value);
-    storageStatus.hidden = true;
   } catch {
-    storageStatus.textContent = "Your browser could not save changes. Export a backup before leaving.";
-    storageStatus.hidden = false;
+    showStorageError();
   }
 }
 
@@ -109,7 +147,7 @@ function isValidDateString(value) {
 }
 
 function loadTheme() {
-  return localStorage.getItem("studyTheme") === "dark" ? "dark" : "light";
+  return readStorage("studyTheme") === "dark" ? "dark" : "light";
 }
 
 function applyTheme(theme) {
@@ -133,20 +171,24 @@ function getVisibleTasks() {
 }
 
 function updateDashboard() {
-  const completed = tasks.filter((task) => task.completed).length;
-  const percent = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
-  progressRing.style.setProperty("--progress", `${percent}%`);
-  progressPercent.textContent = `${percent}%`;
-  completedCount.textContent = completed;
-  sprintCount.textContent = studyStats.sprints;
-  streakCount.textContent = studyStats.streak;
-  momentumTitle.textContent = percent === 100 && tasks.length ? "You crushed it!" : percent >= 50 ? "You are on a roll" : "Ready when you are";
-  momentumMessage.textContent = percent === 100 && tasks.length ? "Every task is complete. Enjoy the win." : "Every finished task makes the next one easier.";
+  const progress = Core.dailyProgress(studyStats, tasks, dailyGoalMinutes);
+  progressRing.style.setProperty("--progress", `${progress.percent}%`);
+  progressPercent.textContent = `${progress.percent}%`;
+  completedCount.textContent = progress.completed;
+  sprintCount.textContent = progress.sprints;
+  streakCount.textContent = progress.streak;
+  momentumTitle.textContent = progress.percent === 100 ? "Today's goal, reached" : progress.minutes ? "You're making time" : "Ready when you are";
+  momentumMessage.textContent = `${progress.minutes} of ${dailyGoalMinutes} focus minutes today.`;
 }
 
 function updateFocusOptions() {
   const openTasks = getOpenTasks();
+  const locked = Boolean(focusSession);
   focusTask.innerHTML = "";
+  if (locked && !openTasks.some((task) => task.id === focusSession.taskId)) {
+    openTasks.unshift({ id: focusSession.taskId, text: `${focusSession.taskText} (sprint task)` });
+  }
+  if (locked) selectedTaskId = focusSession.taskId;
   if (!openTasks.length) {
     const option = document.createElement("option");
     option.textContent = "Add an unfinished task first";
@@ -154,9 +196,10 @@ function updateFocusOptions() {
     focusTask.append(option);
     focusTask.disabled = true;
     selectedTaskId = "";
+    updateFocusControls();
     return;
   }
-  focusTask.disabled = false;
+  focusTask.disabled = locked;
   if (!openTasks.some((task) => task.id === selectedTaskId)) selectedTaskId = openTasks[0].id;
   openTasks.forEach((task) => {
     const option = document.createElement("option");
@@ -165,6 +208,7 @@ function updateFocusOptions() {
     option.selected = task.id === selectedTaskId;
     focusTask.append(option);
   });
+  updateFocusControls();
 }
 
 function formatTime(seconds) {
@@ -172,47 +216,114 @@ function formatTime(seconds) {
 }
 
 function updateTimer() {
-  timerDisplay.textContent = formatTime(focusSeconds);
-  timerRing.style.setProperty("--timer-progress", `${((focusDurationSeconds - focusSeconds) / focusDurationSeconds) * 360}deg`);
+  const duration = focusSession ? focusSession.durationSeconds : focusDurationSeconds;
+  const remaining = focusSession ? Core.remainingMs(focusSession, Date.now()) : duration * 1000;
+  timerDisplay.textContent = formatTime(Math.ceil(remaining / 1000));
+  timerRing.style.setProperty("--timer-progress", `${(1 - remaining / (duration * 1000)) * 360}deg`);
 }
 
 function markStudyDay() {
-  const today = new Date().toISOString().slice(0, 10);
-  const yesterdayDate = new Date();
-  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-  const yesterday = yesterdayDate.toISOString().slice(0, 10);
-  if (studyStats.lastStudyDate !== today) {
-    studyStats.streak = studyStats.lastStudyDate === yesterday ? studyStats.streak + 1 : 1;
-    studyStats.lastStudyDate = today;
-  }
-  studyStats.studyDays = Array.isArray(studyStats.studyDays) ? studyStats.studyDays : [];
+  const today = Core.localDay();
   if (!studyStats.studyDays.includes(today)) studyStats.studyDays.push(today);
+  studyStats.lastStudyDate = today;
+  studyStats.streak = Core.dailyProgress(studyStats, tasks, dailyGoalMinutes).streak;
   saveStats();
 }
 
-function finishSprint() {
+function updateFocusControls() {
+  const finished = focusSession?.status === "finished";
+  focusDuration.disabled = Boolean(focusSession);
+  timerButton.disabled = Boolean(finished || (!focusSession && !selectedTaskId));
+  resetTimerButton.disabled = !focusSession;
+  timerButton.textContent = focusSession?.status === "running" ? "Pause sprint" : focusSession?.status === "paused" ? "Resume sprint" : "Start sprint";
+  sprintResult.hidden = !finished;
+  focusEmptyLink.hidden = Boolean(focusSession || getOpenTasks().length);
+  if (finished) {
+    const task = tasks.find((item) => item.id === focusSession.taskId);
+    sprintSummary.textContent = `${focusSession.durationSeconds / 60} focus minutes saved for “${focusSession.taskText}”. ${!task ? "This task has been removed." : task.completed ? "This task is already complete." : "Is the task finished, or would another sprint help?"}`;
+    completeFocusTask.disabled = !task || task.completed;
+    continueFocus.disabled = !task || task.completed;
+    focusStatus.textContent = "Sprint complete. Your task stays open until you mark it complete.";
+  } else if (focusSession) {
+    focusStatus.textContent = `${focusSession.status === "paused" ? "Paused" : "Focusing"} on “${focusSession.taskText}”. Reset the sprint to change tasks.`;
+  } else {
+    focusStatus.textContent = selectedTaskId ? "Pick a task and choose your own focus window." : "Add a task below, then make a little time for it.";
+  }
+}
+
+function finishSprint(announce = true) {
+  if (!focusSession) return;
   clearInterval(timerInterval);
   timerInterval = null;
-  timerButton.textContent = "Start sprint";
-  focusStatus.textContent = "Sprint complete! Nice work — your task is marked finished.";
-  const task = tasks.find((item) => item.id === selectedTaskId);
-  if (task) {
-    task.completed = true;
-    task.completedAt = new Date().toISOString();
-    saveTasks();
+  focusSession = Core.finishSession(focusSession);
+  // Another open tab may already have recorded this sprint.
+  const savedStats = readStorage(STATS_KEY);
+  if (savedStats) {
+    try { studyStats = Core.normalizeStats(JSON.parse(savedStats)); } catch {}
   }
-  studyStats.sprints += 1;
-  markStudyDay();
-  notifySprintComplete(task);
-  focusSeconds = focusDurationSeconds;
+  studyStats = Core.recordSprint(studyStats, focusSession);
+  studyStats.streak = Core.dailyProgress(studyStats, tasks, dailyGoalMinutes).streak;
+  saveStats();
+  saveStorage(SESSION_KEY, focusSession);
   updateTimer();
   renderTasks();
   renderHistory();
+  if (announce) notifySprintComplete(focusSession);
 }
 
-function notifySprintComplete(task) {
+function notifySprintComplete(session) {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
-  new Notification("Brightwork sprint complete", { body: `${task ? task.text : "Your focus session"} is finished.` });
+  try {
+    new Notification("Brightwork sprint complete", { body: `${session.durationSeconds / 60} focus minutes saved for ${session.taskText}.` });
+  } catch {
+    // Some mobile browsers require service worker notifications.
+    navigator.serviceWorker?.ready.then((registration) => registration.showNotification("Brightwork sprint complete", {
+      body: `${session.durationSeconds / 60} focus minutes saved for ${session.taskText}.`
+    })).catch(() => {});
+  }
+}
+
+function syncTimer() {
+  if (focusSession?.status === "running" && Core.remainingMs(focusSession, Date.now()) <= 0) finishSprint();
+  updateTimer();
+  const today = Core.localDay();
+  if (today !== displayedDay) {
+    displayedDay = today;
+    updateDashboard();
+    renderHistory();
+  }
+}
+
+function startSprint() {
+  const task = tasks.find((item) => item.id === selectedTaskId && !item.completed);
+  if (!task) return;
+  focusSession = Core.createSession(task, focusDurationSeconds, Date.now(), `${Date.now()}-${Math.random()}`);
+  saveStorage(SESSION_KEY, focusSession);
+  clearInterval(timerInterval);
+  timerInterval = setInterval(syncTimer, 1000);
+  updateFocusOptions();
+  renderTasks();
+  updateTimer();
+  if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {});
+}
+
+function resetSprint() {
+  clearInterval(timerInterval);
+  timerInterval = null;
+  focusSession = null;
+  saveStorage(SESSION_KEY, null);
+  renderTasks();
+  updateTimer();
+}
+
+function restoreSprint() {
+  clearInterval(timerInterval);
+  timerInterval = null;
+  if (focusSession?.status === "finished") finishSprint(false);
+  else if (focusSession?.status === "running") {
+    syncTimer();
+    if (focusSession.status === "running") timerInterval = setInterval(syncTimer, 1000);
+  }
 }
 
 function renderFocusButton(task) {
@@ -220,8 +331,10 @@ function renderFocusButton(task) {
   button.className = "focus-task-button";
   button.type = "button";
   button.textContent = "Focus";
+  button.disabled = Boolean(focusSession && (focusSession.status === "finished" || focusSession.taskId !== task.id));
   button.setAttribute("aria-label", `Focus on "${task.text}"`);
   button.addEventListener("click", () => {
+    if (focusSession && focusSession.taskId !== task.id) return;
     selectedTaskId = task.id;
     updateFocusOptions();
     document.querySelector(".focus-card").scrollIntoView({ behavior: "smooth", block: "center" });
@@ -295,7 +408,7 @@ function renderTasks() {
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = task.completed;
-    checkbox.setAttribute("aria-label", `Mark "${task.text}" as complete`);
+    checkbox.setAttribute("aria-label", `Mark "${task.text}" as ${task.completed ? "incomplete" : "complete"}`);
     checkbox.addEventListener("change", () => toggleTask(task.id));
     const details = document.createElement("span");
     details.className = "task-details";
@@ -338,6 +451,7 @@ function toggleTask(taskId) {
   if (isCompleting) markStudyDay();
   saveTasks();
   renderTasks();
+  renderHistory();
 }
 
 function deleteTask(taskId) {
@@ -352,7 +466,7 @@ function renderHistory() {
   for (let offset = 27; offset >= 0; offset -= 1) {
     const date = new Date(today);
     date.setDate(today.getDate() - offset);
-    const dateString = date.toISOString().slice(0, 10);
+    const dateString = Core.localDay(date);
     const day = document.createElement("span");
     day.className = `history-day${studyStats.studyDays?.includes(dateString) ? " studied" : ""}`;
     day.title = `${dateString}${studyStats.studyDays?.includes(dateString) ? " — studied" : ""}`;
@@ -362,13 +476,16 @@ function renderHistory() {
 }
 
 function exportData() {
-  const backup = { tasks, stats: studyStats, theme: localStorage.getItem("studyTheme"), focusDuration: localStorage.getItem(DURATION_KEY) };
+  const backup = { version: 2, tasks, stats: studyStats, theme: loadTheme(), focusDuration: focusDurationSeconds / 60, dailyGoal: dailyGoalMinutes };
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
   const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `brightwork-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  const url = URL.createObjectURL(blob);
+  link.href = url;
+  link.download = `brightwork-backup-${Core.localDay()}.json`;
+  document.body.append(link);
   link.click();
-  URL.revokeObjectURL(link.href);
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function parseDateValue(value) {
@@ -384,19 +501,19 @@ function parseDateValue(value) {
   const relativeDate = new Date();
   if (normalized === "tomorrow") {
     relativeDate.setDate(relativeDate.getDate() + 1);
-    return relativeDate.toISOString().slice(0, 10);
+    return Core.localDay(relativeDate);
   }
-  if (normalized === "today") return relativeDate.toISOString().slice(0, 10);
+  if (normalized === "today") return Core.localDay(relativeDate);
   else {
     const parsed = Date.parse(text);
     if (Number.isNaN(parsed)) return "";
-    const converted = new Date(parsed).toISOString().slice(0, 10);
+    const converted = Core.localDay(new Date(parsed));
     return isValidDateString(converted) ? converted : "";
   }
-  return relativeDate.toISOString().slice(0, 10);
 }
 
 function parseImportedTask(raw, index) {
+  if (!raw || typeof raw !== "object") return null;
   const text = String(raw.text ?? raw.title ?? raw.name ?? raw.task ?? raw.taskname ?? raw.description ?? "").trim();
   if (!text) return null;
   const rawPriority = String(raw.priority || "medium").toLowerCase();
@@ -463,7 +580,7 @@ function parseImportContent(text, extension) {
     const parsed = JSON.parse(text);
     const sourceTasks = Array.isArray(parsed) ? parsed : parsed.tasks;
     if (!Array.isArray(sourceTasks)) throw new Error("JSON must contain a tasks array.");
-    return { tasks: sourceTasks, stats: Array.isArray(parsed) ? null : parsed.stats, theme: parsed.theme, focusDuration: parsed.focusDuration };
+    return { tasks: sourceTasks, stats: Array.isArray(parsed) ? null : parsed.stats, theme: parsed.theme, focusDuration: parsed.focusDuration, dailyGoal: parsed.dailyGoal };
   }
   if (extension === "csv") return { tasks: parseCsv(text) };
   return { tasks: parseTextTasks(text) };
@@ -482,12 +599,13 @@ function showImportPreview(parsed, invalidCount) {
     const key = task.text.toLowerCase();
     return validTasks.findIndex((candidate) => candidate.text.toLowerCase() === key) === index;
   });
-  pendingImport = { ...parsed, tasks: uniqueTasks };
   const existingText = new Set(tasks.map((task) => task.text.toLowerCase()));
   const existingDuplicates = uniqueTasks.filter((task) => existingText.has(task.text.toLowerCase())).length;
-  importSummary.textContent = `${uniqueTasks.length} task${uniqueTasks.length === 1 ? "" : "s"} found${invalidCount + duplicates + existingDuplicates ? ` · ${invalidCount + duplicates + existingDuplicates} skipped` : ""}. Choose how to add them.`;
+  pendingImport = { ...parsed, tasks: uniqueTasks, skipped: invalidCount + duplicates, existingDuplicates };
+  document.querySelector('input[name="import-mode"][value="add"]').checked = true;
+  updateImportSummary();
   importPreview.innerHTML = "";
-  validTasks.slice(0, 20).forEach((task) => {
+  uniqueTasks.slice(0, 20).forEach((task) => {
     const item = document.createElement("li");
     item.textContent = task.text;
     const metadata = document.createElement("small");
@@ -495,12 +613,20 @@ function showImportPreview(parsed, invalidCount) {
     item.append(metadata);
     importPreview.append(item);
   });
-  if (validTasks.length > 20) {
+  if (uniqueTasks.length > 20) {
     const more = document.createElement("li");
-    more.textContent = `…and ${validTasks.length - 20} more`;
+    more.textContent = `…and ${uniqueTasks.length - 20} more`;
     importPreview.append(more);
   }
   importDialog.showModal();
+}
+
+function updateImportSummary() {
+  if (!pendingImport) return;
+  const replace = document.querySelector('input[name="import-mode"]:checked').value === "replace";
+  const skipped = pendingImport.skipped + (replace ? 0 : pendingImport.existingDuplicates);
+  importSummary.textContent = `${pendingImport.tasks.length} task${pendingImport.tasks.length === 1 ? "" : "s"} found${skipped ? ` · ${skipped} skipped` : ""}. ${replace ? "Your current tasks will be replaced." : "Choose how to add them."}`;
+  confirmImport.disabled = !replace && !pendingImport.tasks.length;
 }
 
 function importData(file) {
@@ -509,7 +635,7 @@ function importData(file) {
     try {
       const extension = file.name.split(".").pop().toLowerCase();
       const parsed = parseImportContent(String(reader.result), extension);
-      const invalidCount = parsed.tasks.filter((task) => !String(task.text ?? task.title ?? task.name ?? task.task ?? task.taskname ?? task.description ?? "").trim()).length;
+      const invalidCount = parsed.tasks.filter((task) => !parseImportedTask(task, 0)).length;
       showImportPreview(parsed, invalidCount);
     } catch (error) {
       importSummary.textContent = `Import failed: ${error.message}`;
@@ -539,29 +665,45 @@ taskForm.addEventListener("submit", (event) => {
 
 filterButtons.forEach((button) => button.addEventListener("click", () => {
   activeFilter = button.dataset.filter;
-  filterButtons.forEach((item) => item.classList.toggle("active", item === button));
+  filterButtons.forEach((item) => {
+    item.classList.toggle("active", item === button);
+    item.setAttribute("aria-pressed", String(item === button));
+  });
   renderTasks();
 }));
 
 exportButton.addEventListener("click", exportData);
+document.querySelector("#import-button").addEventListener("click", () => importInput.click());
 importInput.addEventListener("change", () => { if (importInput.files[0]) importData(importInput.files[0]); });
 confirmImport.addEventListener("click", () => {
-  if (!pendingImport || !pendingImport.tasks.length) return;
+  if (!pendingImport) return;
   const mode = document.querySelector("input[name=\"import-mode\"]:checked").value;
+  if (mode === "add" && !pendingImport.tasks.length) return;
+  if (mode === "replace" && focusSession && focusSession.status !== "finished") {
+    importSummary.textContent = "Finish or reset your current sprint before replacing tasks. You can still add tasks.";
+    return;
+  }
   const existingText = new Set(tasks.map((task) => task.text.toLowerCase()));
   const importedTasks = pendingImport.tasks.filter((task) => !existingText.has(task.text.toLowerCase()));
   tasks = mode === "replace" ? pendingImport.tasks : [...tasks, ...importedTasks];
-  if (mode === "replace" && pendingImport.stats) studyStats = pendingImport.stats;
+  if (mode === "replace") {
+    resetSprint();
+    if (pendingImport.stats) studyStats = Core.normalizeStats(pendingImport.stats);
+  }
   if (mode === "replace" && ["light", "dark"].includes(pendingImport.theme)) {
     saveRawStorage("studyTheme", pendingImport.theme);
     applyTheme(pendingImport.theme);
   }
-  if (mode === "replace" && Number(pendingImport.focusDuration)) {
-    focusDurationSeconds = Number(pendingImport.focusDuration) * 60;
-    focusSeconds = focusDurationSeconds;
-    focusDuration.value = pendingImport.focusDuration;
-    saveRawStorage(DURATION_KEY, pendingImport.focusDuration);
+  if (mode === "replace" && pendingImport.focusDuration != null) {
+    focusDurationSeconds = validFocusMinutes(pendingImport.focusDuration) * 60;
+    focusDuration.value = String(focusDurationSeconds / 60);
+    saveRawStorage(DURATION_KEY, String(focusDurationSeconds / 60));
     updateTimer();
+  }
+  if (mode === "replace" && pendingImport.dailyGoal != null) {
+    dailyGoalMinutes = validGoalMinutes(pendingImport.dailyGoal);
+    dailyGoal.value = String(dailyGoalMinutes);
+    saveRawStorage(GOAL_KEY, String(dailyGoalMinutes));
   }
   saveTasks();
   saveStats();
@@ -571,46 +713,71 @@ confirmImport.addEventListener("click", () => {
   renderTasks();
   renderHistory();
 });
-focusTask.addEventListener("change", () => { selectedTaskId = focusTask.value; });
+importDialog.addEventListener("close", () => {
+  pendingImport = null;
+  importInput.value = "";
+});
+document.querySelectorAll('input[name="import-mode"]').forEach((input) => input.addEventListener("change", updateImportSummary));
+focusTask.addEventListener("change", () => {
+  if (focusSession) return updateFocusOptions();
+  selectedTaskId = focusTask.value;
+});
+if (focusSession) focusDurationSeconds = focusSession.durationSeconds;
 focusDuration.value = String(focusDurationSeconds / 60);
 focusDuration.addEventListener("change", () => {
-  clearInterval(timerInterval);
-  timerInterval = null;
-  focusDurationSeconds = Number(focusDuration.value) * 60;
-  focusSeconds = focusDurationSeconds;
-  localStorage.setItem(DURATION_KEY, String(focusDurationSeconds / 60));
-  timerButton.textContent = "Start sprint";
+  if (focusSession) return;
+  focusDurationSeconds = validFocusMinutes(focusDuration.value) * 60;
+  saveRawStorage(DURATION_KEY, String(focusDurationSeconds / 60));
   updateTimer();
 });
 
 timerButton.addEventListener("click", () => {
-  if (!selectedTaskId) return;
-  if (timerInterval) {
+  syncTimer();
+  if (focusSession?.status === "finished") return;
+  if (!focusSession) return startSprint();
+  if (focusSession.status === "running") {
+    focusSession = Core.pauseSession(focusSession, Date.now());
     clearInterval(timerInterval);
     timerInterval = null;
-    timerButton.textContent = "Resume sprint";
-    return;
+  } else {
+    focusSession = Core.resumeSession(focusSession, Date.now());
+    timerInterval = setInterval(syncTimer, 1000);
   }
-  if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
-  timerInterval = setInterval(() => {
-    focusSeconds -= 1;
-    updateTimer();
-    if (focusSeconds <= 0) finishSprint();
-  }, 1000);
-  timerButton.textContent = "Pause sprint";
+  saveStorage(SESSION_KEY, focusSession);
+  updateFocusControls();
+  updateTimer();
 });
 
-resetTimerButton.addEventListener("click", () => {
-  clearInterval(timerInterval);
-  timerInterval = null;
-  focusSeconds = focusDurationSeconds;
-  timerButton.textContent = "Start sprint";
-  updateTimer();
+resetTimerButton.addEventListener("click", resetSprint);
+completeFocusTask.addEventListener("click", () => {
+  if (focusSession?.status !== "finished") return;
+  const taskId = focusSession.taskId;
+  const task = tasks.find((item) => item.id === taskId);
+  if (task && !task.completed) toggleTask(taskId);
+  resetSprint();
+});
+continueFocus.addEventListener("click", () => {
+  if (focusSession?.status !== "finished") return;
+  const taskId = focusSession.taskId;
+  resetSprint();
+  selectedTaskId = taskId;
+  startSprint();
+});
+chooseNextTask.addEventListener("click", () => {
+  resetSprint();
+  if (getOpenTasks().length) focusTask.focus();
+  else taskInput.focus();
+});
+dailyGoal.value = String(dailyGoalMinutes);
+dailyGoal.addEventListener("change", () => {
+  dailyGoalMinutes = validGoalMinutes(dailyGoal.value);
+  saveRawStorage(GOAL_KEY, String(dailyGoalMinutes));
+  updateDashboard();
 });
 
 themeToggle.addEventListener("click", () => {
   const nextTheme = document.body.classList.contains("dark-mode") ? "light" : "dark";
-  localStorage.setItem("studyTheme", nextTheme);
+  saveRawStorage("studyTheme", nextTheme);
   applyTheme(nextTheme);
 });
 
@@ -618,4 +785,27 @@ applyTheme(loadTheme());
 updateTimer();
 renderTasks();
 renderHistory();
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("service-worker.js").catch(() => {});
+restoreSprint();
+document.addEventListener("visibilitychange", syncTimer);
+window.addEventListener("pageshow", syncTimer);
+window.addEventListener("focus", syncTimer);
+window.addEventListener("storage", (event) => {
+  if (event.storageArea !== localStorage) return;
+  if (event.key === null || event.key === STORAGE_KEY) tasks = loadTasks();
+  if (event.key === null || event.key === STATS_KEY) studyStats = loadStats();
+  if (event.key === null || event.key === SESSION_KEY) focusSession = loadSession();
+  if (event.key === null || event.key === GOAL_KEY) dailyGoalMinutes = validGoalMinutes(readStorage(GOAL_KEY));
+  if (event.key === null || event.key === DURATION_KEY || event.key === SESSION_KEY) {
+    focusDurationSeconds = focusSession ? focusSession.durationSeconds : validFocusMinutes(readStorage(DURATION_KEY)) * 60;
+  }
+  dailyGoal.value = String(dailyGoalMinutes);
+  focusDuration.value = String(focusDurationSeconds / 60);
+  if (event.key === null || event.key === "studyTheme") applyTheme(loadTheme());
+  renderTasks();
+  renderHistory();
+  updateTimer();
+  if (event.key === null || event.key === SESSION_KEY) restoreSprint();
+});
+// Refresh daily totals even when the app stays open across midnight without a sprint.
+setInterval(syncTimer, 30000);
+if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("service-worker.js").catch(() => {});

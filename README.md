@@ -9,8 +9,10 @@ Brightwork is a calm, browser-based study task tracker. It helps you turn a stud
 - Filter tasks by all, active, completed, or high priority
 - Choose a focus task and a focus duration
 - Pause, resume, and reset focus sprints
-- Automatically complete a task when its focus sprint ends
-- Track completion percentage, finished tasks, sprints, and study streaks
+- Record a finished sprint without automatically completing its task
+- Choose **Mark task complete**, **Continue focusing**, or **Choose another task** after a sprint
+- Set a daily focus goal and track completed focus minutes, tasks finished today, sprints today, and study streaks
+- Recover running and paused sprints after a refresh or device sleep
 - View a 28-day study history
 - Switch between light and dark mode
 - Import tasks from Brightwork JSON, flexible JSON, CSV, or plain text
@@ -46,6 +48,28 @@ http://localhost:8000
 
 You can also use the VS Code Live Server extension if you already have it installed.
 
+### Option 3: Use Node.js
+
+If Node.js is installed, no dependency installation is needed:
+
+```powershell
+npm start
+```
+
+Open `http://127.0.0.1:8000`. The development server listens only on your computer.
+
+## Your daily study loop
+
+1. Add a task, then select it in the focus panel near the top of the page.
+2. Choose a focus length and start your sprint. The task and duration stay attached to that sprint until you finish or reset it.
+3. Pause and resume whenever you need to. Refreshing the page preserves the sprint; a running timer catches up using its saved finish time.
+4. When the sprint finishes, its full duration counts toward your daily focus goal. The task stays open until you choose **Mark task complete**.
+5. Continue with the same task or choose another one.
+
+Resetting a sprint discards that unfinished sprint. Minutes count only for completed sprints. A sprint that spans midnight counts on its scheduled finish day, using the device's local calendar. Daily totals reset at local midnight; adding future tasks does not reduce your progress.
+
+Browser suspension or closing the app can delay the completion screen and notification. Brightwork catches up the next time the app runs; it does not run a background alarm while the browser is closed.
+
 ## Project structure
 
 ```text
@@ -53,9 +77,12 @@ brightwork/
 ├── index.html          # Page structure and accessible form controls
 ├── styles.css          # Warm visual design and responsive layout
 ├── script.js           # Tasks, timer, filters, import/export, and persistence
+├── study-core.js       # Timestamp-based sprint state and daily progress calculations
 ├── manifest.json       # Installable PWA metadata
 ├── service-worker.js   # Offline caching
 ├── icon.svg            # Brightwork app icon
+├── tests/              # Dependency-free timer, calendar, and offline regression tests
+├── tools/serve.cjs     # Optional local Node.js server
 └── README.md           # Project documentation
 ```
 
@@ -66,7 +93,11 @@ Brightwork stores data locally in the browser with `localStorage`:
 - Tasks use the `studyTasks` key
 - Progress and history use the `studyStats` key
 - Focus duration uses the `focusDuration` key
+- Running, paused, and finished sprint state uses the `focusSession` key
+- Daily focus goal uses the `dailyFocusGoal` key
 - Theme preference uses the `studyTheme` key
+
+Study stats retain completed sprint records so daily minutes can be calculated without depending on the current task list. Existing tasks and study history are preserved when upgrading. Older backups do not contain sprint durations, so historical focus minutes are not estimated.
 
 There is no server-side account or external database. Data stays in the browser where Brightwork is used. Use **Export** regularly if you want a portable backup.
 
@@ -119,6 +150,18 @@ Review calculus notes | high | Mathematics | tomorrow
 ```
 
 The import screen previews the tasks and lets you choose **Add to my tasks** or **Replace my tasks**. Duplicate task names are skipped when adding.
+
+New backups include the daily goal and completed sprint history, along with tasks, theme, and focus length. Replacing tasks restores those settings when present. Finish or reset an active sprint before replacing tasks; adding tasks remains available during a sprint. Active timers stay in their original browser and are not part of exported backups.
+
+## Run checks
+
+With a current Node.js version installed:
+
+```powershell
+npm test
+```
+
+The tests cover elapsed time after suspension, pause and refresh recovery, task binding, counting completed sprints once, daily rollover, local dates and daylight saving, legacy backups, and offline asset caching. No external test libraries are required.
 
 ## Notifications and permissions
 

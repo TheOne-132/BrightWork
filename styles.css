@@ -33,6 +33,10 @@ body.dark-mode {
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   min-width: 320px;
@@ -163,6 +167,32 @@ h2 {
   line-height: 1.5;
 }
 
+.goal-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 1.2rem;
+}
+
+.goal-setting label,
+.goal-hint {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.goal-setting select {
+  flex: 0 1 135px;
+  padding: 0.4rem;
+  background: var(--card);
+  font-size: 0.8rem;
+}
+
+.goal-hint {
+  margin: 0.5rem 0 0;
+  line-height: 1.5;
+}
+
 .progress-ring,
 .timer-ring {
   display: grid;
@@ -285,6 +315,34 @@ h2 {
   min-width: 0;
 }
 
+.focus-empty-link {
+  display: inline-block;
+  margin-top: 1rem;
+  color: #f3c17d;
+  line-height: 1.5;
+}
+
+.sprint-result {
+  grid-column: 1 / -1;
+  padding-top: 1.2rem;
+  border-top: 1px solid #b67a61;
+}
+
+.sprint-result h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.sprint-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.sprint-actions button {
+  font-size: 0.85rem;
+}
+
 .timer-area {
   display: flex;
   align-items: center;
@@ -307,6 +365,10 @@ h2 {
 .timer-ring strong {
   font-size: 1.8rem;
   letter-spacing: 0.04em;
+}
+
+.timer-ring span {
+  color: #f0d8c5;
 }
 
 .timer-controls {
@@ -407,6 +469,12 @@ button:hover {
   background: var(--primary-dark);
 }
 
+button:disabled,
+select:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .tasks-heading {
   display: flex;
   align-items: baseline;
@@ -444,14 +512,6 @@ button:hover {
 .small-button:hover {
   background: var(--primary);
   color: #fff;
-}
-
-.file-button {
-  cursor: pointer;
-}
-
-.file-button input {
-  display: none;
 }
 
 .import-dialog {
@@ -720,5 +780,23 @@ button:hover {
 
   .timer-area {
     padding-top: 0.5rem;
+  }
+
+  .task-item {
+    flex-wrap: wrap;
+  }
+
+  .task-item > label {
+    flex-basis: 100%;
+  }
+
+  .sprint-actions {
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body {
+    transition: none;
   }
 }
