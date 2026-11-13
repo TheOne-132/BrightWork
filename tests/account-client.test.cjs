@@ -30,9 +30,10 @@ test("authentication delegates passwords to the official client and uses safe se
 
 test("cloud reads filter the account and writes use an atomic revision RPC", async () => {
   const calls = [];
+  const builder = (data) => ({ abortSignal(signal) { assert.equal(signal.aborted, false); return this; }, retry(enabled) { assert.equal(enabled, false); return Promise.resolve({ data }); } });
   const client = createAccountClient(config, { createClient: () => ({
-    from: (table) => ({ select: () => ({ eq: (column, id) => ({ maybeSingle: async () => { calls.push({ table, column, id }); return { data: null }; } }) }) }),
-    rpc: async (name, args) => { calls.push({ name, args }); return { data: { revision: 2, payload: args.new_payload } }; }
+    from: (table) => ({ select: () => ({ eq: (column, id) => ({ maybeSingle: () => { calls.push({ table, column, id }); return builder(null); } }) }) }),
+    rpc: (name, args) => { calls.push({ name, args }); return builder({ revision: 2, payload: args.new_payload }); }
   }) });
   await client.transport("account-a").read();
   await client.transport("account-a").write({ tasks: [] }, 1);

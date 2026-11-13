@@ -44,6 +44,13 @@ const completeFocusTask = document.querySelector("#complete-focus-task");
 const continueFocus = document.querySelector("#continue-focus");
 const chooseNextTask = document.querySelector("#choose-next-task");
 const focusEmptyLink = document.querySelector("#focus-empty-link");
+const workspaceStore = new BrightworkStorage.WorkspaceStore({
+  getItem: (key) => localStorage.getItem(key),
+  setItem: (key, value) => localStorage.setItem(key, value)
+});
+let workspaceChanged = null;
+let workspaceReset = null;
+let changeQueued = false;
 
 let tasks = loadTasks();
 let activeFilter = "all";
@@ -58,7 +65,7 @@ let displayedDay = Core.localDay();
 
 function readStorage(key) {
   try {
-    return localStorage.getItem(key);
+    return workspaceStore.getItem(key);
   } catch {
     showStorageError();
     return null;
@@ -125,19 +132,83 @@ function saveStats() {
 
 function saveStorage(key, value) {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    workspaceStore.setItem(key, JSON.stringify(value));
   } catch {
     showStorageError();
   }
+  if (key !== SESSION_KEY) notifyWorkspaceChanged();
 }
 
 function saveRawStorage(key, value) {
   try {
-    localStorage.setItem(key, value);
+    workspaceStore.setItem(key, value);
   } catch {
     showStorageError();
   }
+  notifyWorkspaceChanged();
 }
+
+function notifyWorkspaceChanged() {
+  if (changeQueued || !workspaceStore.userId) return;
+  const owner = workspaceStore.userId;
+  changeQueued = true;
+  queueMicrotask(() => {
+    changeQueued = false;
+    if (workspaceStore.userId === owner) workspaceChanged?.(workspaceSnapshot());
+  });
+}
+
+function workspaceSnapshot() {
+  return BrightworkSync.normalizeSnapshot({
+    tasks, stats: studyStats,
+    preferences: { theme: loadTheme(), focusDuration: validFocusMinutes(readStorage(DURATION_KEY)), dailyGoal: dailyGoalMinutes }
+  });
+}
+
+function reloadWorkspace() {
+  clearInterval(timerInterval);
+  timerInterval = null;
+  tasks = loadTasks(); studyStats = loadStats(); focusSession = loadSession();
+  selectedTaskId = "";
+  focusDurationSeconds = focusSession ? focusSession.durationSeconds : validFocusMinutes(readStorage(DURATION_KEY)) * 60;
+  dailyGoalMinutes = validGoalMinutes(readStorage(GOAL_KEY));
+  dailyGoal.value = String(dailyGoalMinutes);
+  focusDuration.value = String(focusDurationSeconds / 60);
+  applyTheme(loadTheme()); renderTasks(); renderHistory(); updateTimer(); restoreSprint();
+}
+
+function applyCloudSnapshot(raw) {
+  const snapshot = BrightworkSync.normalizeSnapshot(raw);
+  if (JSON.stringify(snapshot) === JSON.stringify(workspaceSnapshot())) return;
+  tasks = snapshot.tasks; studyStats = snapshot.stats;
+  dailyGoalMinutes = snapshot.preferences.dailyGoal;
+  if (!focusSession) focusDurationSeconds = snapshot.preferences.focusDuration * 60;
+  try {
+    workspaceStore.setItem(STORAGE_KEY, JSON.stringify(tasks));
+    workspaceStore.setItem(STATS_KEY, JSON.stringify(studyStats));
+    workspaceStore.setItem(GOAL_KEY, String(dailyGoalMinutes));
+    workspaceStore.setItem(DURATION_KEY, String(snapshot.preferences.focusDuration));
+    workspaceStore.setItem("studyTheme", snapshot.preferences.theme);
+  } catch { showStorageError(); }
+  dailyGoal.value = String(dailyGoalMinutes);
+  focusDuration.value = String(focusDurationSeconds / 60);
+  applyTheme(snapshot.preferences.theme); renderTasks(); renderHistory(); updateTimer();
+}
+
+globalThis.BrightworkWorkspace = {
+  snapshot: workspaceSnapshot,
+  apply: applyCloudSnapshot,
+  onChange(callback) { workspaceChanged = callback; },
+  onReset(callback) { workspaceReset = callback; },
+  switchAccount(userId) { workspaceStore.use(userId); reloadWorkspace(); return workspaceSnapshot(); },
+  cache: () => workspaceStore.readCache(),
+  saveCache: (cache) => workspaceStore.saveCache(cache),
+  guestSnapshot() {
+    const guest = new BrightworkStorage.WorkspaceStore({ getItem: (key) => localStorage.getItem(key) });
+    const parse = (key) => { try { return JSON.parse(guest.getItem(key)); } catch { return null; } };
+    return BrightworkSync.normalizeSnapshot({ tasks: parse(STORAGE_KEY), stats: parse(STATS_KEY), preferences: { theme: guest.getItem("studyTheme"), focusDuration: guest.getItem(DURATION_KEY), dailyGoal: guest.getItem(GOAL_KEY) } });
+  }
+};
 
 function isValidDateString(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) return false;
@@ -311,6 +382,8 @@ function resetSprint() {
   clearInterval(timerInterval);
   timerInterval = null;
   focusSession = null;
+  focusDurationSeconds = validFocusMinutes(readStorage(DURATION_KEY)) * 60;
+  focusDuration.value = String(focusDurationSeconds / 60);
   saveStorage(SESSION_KEY, null);
   renderTasks();
   updateTimer();
@@ -759,7 +832,10 @@ completeFocusTask.addEventListener("click", () => {
 continueFocus.addEventListener("click", () => {
   if (focusSession?.status !== "finished") return;
   const taskId = focusSession.taskId;
+  const duration = focusSession.durationSeconds;
   resetSprint();
+  focusDurationSeconds = duration;
+  focusDuration.value = String(duration / 60);
   selectedTaskId = taskId;
   startSprint();
 });
@@ -791,6 +867,10 @@ window.addEventListener("pageshow", syncTimer);
 window.addEventListener("focus", syncTimer);
 window.addEventListener("storage", (event) => {
   if (event.storageArea !== localStorage) return;
+  if (event.key === null) { workspaceReset?.(); reloadWorkspace(); return; }
+  const logicalKey = workspaceStore.logicalKey(event.key);
+  if (!logicalKey) return;
+  event = { key: logicalKey };
   if (event.key === null || event.key === STORAGE_KEY) tasks = loadTasks();
   if (event.key === null || event.key === STATS_KEY) studyStats = loadStats();
   if (event.key === null || event.key === SESSION_KEY) focusSession = loadSession();
@@ -805,6 +885,7 @@ window.addEventListener("storage", (event) => {
   renderHistory();
   updateTimer();
   if (event.key === null || event.key === SESSION_KEY) restoreSprint();
+  if (event.key !== SESSION_KEY) notifyWorkspaceChanged();
 });
 // Refresh daily totals even when the app stays open across midnight without a sprint.
 setInterval(syncTimer, 30000);

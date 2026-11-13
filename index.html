@@ -6,9 +6,16 @@
   <title>Brightwork</title>
   <meta name="theme-color" content="#c3543b">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=5">
-  <script src="study-core.js?v=5" defer></script>
-  <script src="script.js?v=5" defer></script>
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <link rel="stylesheet" href="styles.css?v=6">
+  <script src="config.js?v=6" defer></script>
+  <script src="vendor/supabase.js?v=6" defer></script>
+  <script src="study-core.js?v=6" defer></script>
+  <script src="sync-core.js?v=6" defer></script>
+  <script src="workspace-store.js?v=6" defer></script>
+  <script src="account-client.js?v=6" defer></script>
+  <script src="script.js?v=6" defer></script>
+  <script src="accounts-ui.js?v=6" defer></script>
 </head>
 <body>
   <main class="app">
@@ -24,6 +31,48 @@
     </header>
 
     <p id="storage-status" class="storage-status" role="status" hidden></p>
+
+    <section class="account-card" aria-labelledby="account-heading">
+      <div class="account-details">
+        <p class="card-kicker">Your study space</p>
+        <h2 id="account-heading">Take your progress with you.</h2>
+        <p id="account-description">Create an account to keep your tasks and study history together across devices.</p>
+        <p id="cloud-status" class="cloud-status" role="status">Saved on this device. Sign in to save to your account.</p>
+      </div>
+      <div class="account-actions">
+        <button id="open-sign-in" type="button">Sign in</button>
+        <button id="open-sign-up" class="secondary-task-button" type="button">Create account</button>
+        <button id="sync-now" class="small-button" type="button" hidden>Sync now</button>
+        <button id="sign-out" class="small-button" type="button" hidden>Sign out</button>
+      </div>
+      <div id="guest-transfer" class="guest-transfer" hidden>
+        <p>There is study activity saved on this device. Would you like to bring it into your account?</p>
+        <button id="transfer-guest" type="button">Bring my local activity</button>
+        <button id="dismiss-transfer" class="secondary-task-button" type="button">Keep separate</button>
+      </div>
+    </section>
+
+    <dialog id="auth-dialog" class="import-dialog auth-dialog" aria-labelledby="auth-heading">
+      <div class="import-panel">
+        <div class="tasks-heading">
+          <div><p class="card-kicker">Make yourself at home</p><h2 id="auth-heading">Welcome back.</h2></div>
+          <button id="close-auth" class="small-button" type="button" aria-label="Close account window">Close</button>
+        </div>
+        <p id="auth-description" class="history-intro">Sign in to your personal study space.</p>
+        <div id="auth-modes" class="filter-group" role="group" aria-label="Account options">
+          <button class="filter-button" data-auth-mode="sign-in" type="button" aria-pressed="true">Sign in</button>
+          <button class="filter-button" data-auth-mode="sign-up" type="button" aria-pressed="false">Create account</button>
+          <button class="filter-button" data-auth-mode="reset" type="button" aria-pressed="false">Forgot password?</button>
+        </div>
+        <form id="auth-form" class="auth-form">
+          <div id="auth-email-field"><label for="auth-email">Email address</label><input id="auth-email" type="email" autocomplete="username" maxlength="254" required></div>
+          <div id="auth-password-field"><label for="auth-password">Password</label><input id="auth-password" type="password" autocomplete="current-password" minlength="8" maxlength="128" required><p id="password-hint" class="goal-hint" hidden>Use at least 8 characters.</p></div>
+          <p id="auth-message" class="auth-message" role="status" aria-live="polite"></p>
+          <button id="auth-submit" type="submit">Sign in</button>
+        </form>
+        <p class="goal-hint">You can also close this window and keep studying on this device.</p>
+      </div>
+    </dialog>
 
     <section class="dashboard" aria-label="Today's study progress">
       <div class="momentum-card">

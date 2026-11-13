@@ -394,6 +394,97 @@ h2 {
   box-shadow: 0 8px 24px var(--shadow);
 }
 
+.account-card {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--card);
+}
+
+.account-details {
+  flex: 1 1 300px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.account-card h2 {
+  margin-bottom: 0.4rem;
+  font-size: 1.15rem;
+}
+
+.account-card p:not(.card-kicker) {
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.account-card #account-description,
+.cloud-status {
+  color: var(--muted);
+}
+
+.cloud-status {
+  margin-bottom: 0 !important;
+}
+
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.account-actions button,
+.guest-transfer button {
+  font-size: 0.85rem;
+}
+
+.guest-transfer {
+  flex-basis: 100%;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.guest-transfer button {
+  margin: 0.3rem 0.3rem 0 0;
+}
+
+.auth-dialog {
+  max-width: 480px;
+}
+
+.auth-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.auth-form label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: bold;
+}
+
+.auth-form input {
+  width: 100%;
+  background: var(--card);
+}
+
+.auth-message {
+  margin-bottom: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--primary);
+}
+
+.auth-message:empty {
+  display: none;
+}
+
 .task-form label {
   display: block;
   margin-bottom: 0.5rem;

@@ -23,6 +23,15 @@
       if (error) throw error;
       return data;
     }
+    async function databaseResult(builder) {
+      const controller = new AbortController();
+      const deadline = setTimeout(() => controller.abort(), 10000);
+      try {
+        // The app owns retrying pending work on reconnect. SDK backoff would
+        // otherwise leave an offline user looking at a saving indicator.
+        return await result(builder.abortSignal(controller.signal).retry(false));
+      } finally { clearTimeout(deadline); }
+    }
     return {
       session: async () => (await result(client.auth.getSession())).session,
       watch(callback) {
@@ -37,8 +46,8 @@
       signOut: () => result(client.auth.signOut({ scope: "local" })),
       transport(userId) {
         return {
-          read: () => result(client.from("brightwork_workspaces").select("payload, revision").eq("user_id", userId).maybeSingle()),
-          write: (payload, revision) => result(client.rpc("save_brightwork_workspace", { new_payload: payload, expected_revision: revision }))
+          read: () => databaseResult(client.from("brightwork_workspaces").select("payload, revision").eq("user_id", userId).maybeSingle()),
+          write: (payload, revision) => databaseResult(client.rpc("save_brightwork_workspace", { new_payload: payload, expected_revision: revision }))
         };
       }
     };

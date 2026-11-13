@@ -15,8 +15,8 @@ function worker(offline = false, storageFails = false) {
     put: async (request, response) => entries.set(request.url, response)
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../service-worker.js"), "utf8"), {
-    self: { addEventListener: (name, handler) => { handlers[name] = handler; }, skipWaiting() {}, clients: { claim: async () => {} }, location: { origin: "https://brightwork.test" } },
-    caches: { open: async () => { if (storageFails) throw new Error("storage unavailable"); return cache; }, keys: async () => ["brightwork-v4", "brightwork-v5", "another-app"], delete: async (key) => removed.push(key) },
+    self: { addEventListener: (name, handler) => { handlers[name] = handler; }, skipWaiting() {}, clients: { claim: async () => {} }, location: { origin: "https://brightwork.test", href: "https://brightwork.test/service-worker.js" } },
+    caches: { open: async () => { if (storageFails) throw new Error("storage unavailable"); return cache; }, keys: async () => ["brightwork-v5", "brightwork-v6", "another-app"], delete: async (key) => removed.push(key) },
     fetch: async () => { if (offline) throw new Error("offline"); return new Response("fresh"); },
     URL, Response
   });
@@ -34,15 +34,15 @@ test("offline installation includes the exact script and style URLs used by HTML
 test("activation removes old Brightwork caches and preserves unrelated caches", async () => {
   const app = worker();
   await new Promise((resolve) => app.handlers.activate({ waitUntil: (promise) => promise.then(resolve) }));
-  assert.deepEqual(app.removed, ["brightwork-v4"]);
+  assert.deepEqual(app.removed, ["brightwork-v5"]);
 });
 
 test("offline requests return cached assets and navigations fall back to the app", async () => {
   const app = worker(true);
-  app.entries.set("https://brightwork.test/script.js?v=5", new Response("cached script"));
+  app.entries.set("https://brightwork.test/script.js?v=6", new Response("cached script"));
   app.entries.set("./index.html", new Response("cached app"));
   let response;
-  app.handlers.fetch({ request: { method: "GET", url: "https://brightwork.test/script.js?v=5", mode: "cors" }, respondWith: (promise) => { response = promise; } });
+  app.handlers.fetch({ request: { method: "GET", url: "https://brightwork.test/script.js?v=6", mode: "cors" }, respondWith: (promise) => { response = promise; } });
   assert.equal(await (await response).text(), "cached script");
   app.handlers.fetch({ request: { method: "GET", url: "https://brightwork.test/?offline", mode: "navigate" }, respondWith: (promise) => { response = promise; } });
   assert.equal(await (await response).text(), "cached app");
@@ -51,6 +51,13 @@ test("offline requests return cached assets and navigations fall back to the app
 test("unavailable cache storage does not block online requests", async () => {
   const app = worker(false, true);
   let response;
-  app.handlers.fetch({ request: { method: "GET", url: "https://brightwork.test/script.js?v=5", mode: "cors" }, respondWith: (promise) => { response = promise; } });
+  app.handlers.fetch({ request: { method: "GET", url: "https://brightwork.test/script.js?v=6", mode: "cors" }, respondWith: (promise) => { response = promise; } });
   assert.equal(await (await response).text(), "fresh");
+});
+
+test("auth callbacks and private API responses never enter the app cache", () => {
+  const app = worker();
+  for (const url of ["https://brightwork.test/?code=private-code", "https://brightwork.test/rest/v1/brightwork_workspaces", "https://project.supabase.co/rest/v1/brightwork_workspaces"]) {
+    app.handlers.fetch({ request: { method: "GET", url, mode: "cors" }, respondWith() { throw new Error("Private request was intercepted"); } });
+  }
 });

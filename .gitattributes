@@ -1,0 +1,2 @@
+# Preserve the official browser bundle byte-for-byte, including whitespace in strings.
+vendor/supabase.js -text -whitespace
