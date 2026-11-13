@@ -47,7 +47,7 @@
       transport(userId) {
         return {
           read: () => databaseResult(client.from("brightwork_workspaces").select("payload, revision").eq("user_id", userId).maybeSingle()),
-          write: (payload, revision) => databaseResult(client.rpc("save_brightwork_workspace", { new_payload: payload, expected_revision: revision }))
+          write: (payload, revision) => databaseResult(client.rpc("save_brightwork_workspace", { new_payload: payload, expected_revision: revision, expected_user_id: userId }))
         };
       }
     };

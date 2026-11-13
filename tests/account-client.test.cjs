@@ -39,7 +39,17 @@ test("cloud reads filter the account and writes use an atomic revision RPC", asy
   await client.transport("account-a").write({ tasks: [] }, 1);
   assert.deepEqual(calls[0], { table: "brightwork_workspaces", column: "user_id", id: "account-a" });
   assert.equal(calls[1].name, "save_brightwork_workspace");
-  assert.deepEqual(calls[1].args, { new_payload: { tasks: [] }, expected_revision: 1 });
+  assert.deepEqual(calls[1].args, { new_payload: { tasks: [] }, expected_revision: 1, expected_user_id: "account-a" });
+});
+
+test("a delayed save keeps its original account identity after a session switch", async () => {
+  let currentAccount = "alice";
+  const client = createAccountClient(config, { createClient: () => ({ rpc: (name, args) => ({
+    abortSignal() { return this; }, retry() { return Promise.resolve(args.expected_user_id === currentAccount ? { data: {} } : { error: new Error("Account changed") }); }
+  }) }) });
+  const aliceTransport = client.transport("alice");
+  currentAccount = "bob";
+  await assert.rejects(aliceTransport.write({ tasks: ["Alice private task"] }, 0), /Account changed/);
 });
 
 test("provider failures are surfaced instead of reporting a successful save", async () => {
